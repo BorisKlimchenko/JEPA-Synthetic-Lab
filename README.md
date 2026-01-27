@@ -2,12 +2,21 @@
 
 [![SMA-01 Core](https://img.shields.io/badge/Core_Engine-SMA--01_v3.1-blue?style=flat-square)](https://github.com/BorisKlimchenko)
 [![Architecture](https://img.shields.io/badge/Architecture-Latent_Diffusion-orange?style=flat-square)](https://huggingface.co/docs/diffusers)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)]()
 
 > **Official implementation of "JEPA vs LLM" visualization pipeline.**
 > Deterministic Latent Space navigation using AnimateDiff & Semantic Motion Adapters.
 
 This repository hosts the **SMA-01 Core Engine**, a generative pipeline designed to visualize abstract concepts of machine intelligence. It serves as a bridge between abstract cognitive theories (Joint Embedding Predictive Architecture) and concrete visual embeddings.
+
+### 🧪 Laboratory Results (v3.1)
+
+Visualization of the transition from high-entropy noise (LLM Hallucinations) to structured meaning (JEPA State).
+
+| Act I: Chaos (Entropy) | Act II: JEPA (Flow) | Act III: Structure (Order) |
+| :---: | :---: | :---: |
+| ![Chaos](assets/Act_1_Chaos_42.gif) | ![Flow](assets/Act_2_JEPA_Flow_108.gif) | ![Structure](assets/Act_3_Structure_777.gif) |
+| *Motion Scale: 1.4* | *Motion Scale: 0.7* | *Motion Scale: 0.9* |
 
 ## 🚀 Key Features
 
