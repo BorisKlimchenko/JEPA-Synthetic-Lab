@@ -1,4 +1,5 @@
-"system_settings": {
+{
+  "system_settings": {
     "project_name": "JEPA_Synthetic_Lab_Simulation",
     "version": "SMA-01-Beta",
     "fps": 8,
