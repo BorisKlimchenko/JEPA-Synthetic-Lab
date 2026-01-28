@@ -3,15 +3,16 @@ import json
 import os
 import logging
 import random
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Tuple
 
 # Third-party Libs
 from diffusers import AnimateDiffPipeline, MotionAdapter, EulerDiscreteScheduler
 from diffusers.utils import export_to_gif
 
-# --- 1. INSTRUMENTATION (LOGGING) ---
+# --- 1. INSTRUMENTATION ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - [SMA-01 CORE] - %(levelname)s - %(message)s",
@@ -19,222 +20,233 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- 2. CONFIGURATION (IMMUTABLE) ---
+# Suppress minor warnings for cleaner logs
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# --- 2. CONFIGURATION ---
 @dataclass(frozen=True)
 class EngineConfig:
-    """
-    Immutable Configuration for JEPA-Synthetic-Lab Environment.
-    Follows SOLID principles.
-    """
+    """Immutable Configuration for JEPA-Synthetic-Lab."""
     base_model_id: str = "SG161222/Realistic_Vision_V5.1_noVAE"
     motion_adapter_id: str = "guoyww/animatediff-motion-adapter-v1-5-2"
-    prompts_path: str = "prompts.json" # Local path
+    prompts_path: str = "prompts.json"
     output_dir: str = "renders"
-    default_negative: str = "bad quality, worse quality, low resolution"
+    default_negative: str = "bad quality, worse quality, low resolution, watermark, text, error, jpeg artifacts"
 
-# --- 3. STRATEGY PATTERN (ADAPTIVE COMPUTE) ---
+# --- 3. HARDWARE ABSTRACTION LAYER (HAL) ---
+class HardwareProfile:
+    """Detects and encapsulates hardware capabilities."""
+    def __init__(self):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.vram_gb = 0.0
+        self.name = "CPU"
+        
+        if self.device == "cuda":
+            props = torch.cuda.get_device_properties(0)
+            self.vram_gb = props.total_memory / 1e9
+            self.name = torch.cuda.get_device_name(0)
+            
+            # Capability 8.0+ means Ampere (A100, A6000, 3090, 4090)
+            self.compute_capability = props.major + (props.minor / 10)
+        else:
+            self.compute_capability = 0.0
+
+    def is_high_end(self) -> bool:
+        """Returns True for A100, A6000, H100 (VRAM > 20GB)."""
+        return self.vram_gb > 22.0
+
+    def is_ampere_or_newer(self) -> bool:
+        """Returns True if GPU supports modern SDPA natively."""
+        return self.compute_capability >= 8.0
+
+# --- 4. STRATEGY PATTERN ---
 class OptimizationStrategy(ABC):
     @abstractmethod
-    def apply(self, pipe: AnimateDiffPipeline):
+    def apply(self, pipe: AnimateDiffPipeline, profile: HardwareProfile):
+        pass
+
+    @abstractmethod
+    def get_resolution_constraints(self) -> Dict[str, int]:
         pass
 
 class HighPerformanceStrategy(OptimizationStrategy):
-    """A100/A6000 Class: Full VRAM utilization."""
-    def apply(self, pipe: AnimateDiffPipeline):
-        logger.info("🚀 Strategy: HIGH PERFORMANCE. All tensors loaded to VRAM.")
-        # Optional: pipe.enable_xformers_memory_efficient_attention()
+    """
+    Strategy for A100/H100/A6000.
+    Prioritizes Native PyTorch SDPA (Scaled Dot Product Attention).
+    Avoids xFormers on Ampere to prevent kernel deadlocks.
+    """
+    def apply(self, pipe: AnimateDiffPipeline, profile: HardwareProfile):
+        logger.info(f"🚀 Strategy: HIGH PERFORMANCE ({profile.name}).")
+        
+        # Modern PyTorch (2.0+) on Ampere GPUs uses SDPA automatically.
+        # It is faster and more stable than xformers for this architecture.
+        # We explicitly DO NOT enable xformers here to avoid 'freeze' issues.
+        logger.info("⚡ Optimization: Native PyTorch 2.0 SDPA Active.")
+        
+        # No CPU offload needed for 40GB+ VRAM
+        
+    def get_resolution_constraints(self) -> Dict[str, int]:
+        return {"max_width": 1024, "max_height": 1024}
 
 class SurvivalStrategy(OptimizationStrategy):
-    """T4/Home GPU Class: Aggressive offloading."""
-    def apply(self, pipe: AnimateDiffPipeline):
-        logger.info("🛡️ Strategy: SURVIVAL MODE. CPU Offloading active.")
-        pipe.enable_model_cpu_offload()
+    """
+    Strategy for T4/L4/Consumer GPUs (< 16GB VRAM).
+    Prioritizes memory safety over speed.
+    """
+    def apply(self, pipe: AnimateDiffPipeline, profile: HardwareProfile):
+        logger.info(f"🛡️ Strategy: SURVIVAL MODE ({profile.name}).")
+        
+        # 1. Try Memory Efficient Attention (xFormers)
+        # On older cards (T4), xformers is a lifesaver.
+        try:
+            pipe.enable_xformers_memory_efficient_attention()
+            logger.info("⚡ xFormers: ENABLED (Memory optimization).")
+        except Exception:
+            logger.warning("⚠️ xFormers not found/failed. Fallback to slicing.")
+
+        # 2. Aggressive VRAM Management
+        # Only offload if absolutely necessary (T4 usually needs it for 512x768)
+        if profile.vram_gb < 15.0:
+            logger.info("📉 Memory: Enabling CPU Offload.")
+            pipe.enable_model_cpu_offload()
+        
         pipe.enable_vae_slicing()
         pipe.enable_vae_tiling()
 
-def detect_hardware_strategy() -> OptimizationStrategy:
-    """Heuristic analysis of the compute manifold."""
-    if not torch.cuda.is_available():
-        logger.warning("⚠️ CPU DETECTED. Latent navigation will be extremely slow.")
-        return SurvivalStrategy()
+    def get_resolution_constraints(self) -> Dict[str, int]:
+        return {"max_width": 512, "max_height": 512}
 
-    vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
-    device_name = torch.cuda.get_device_name(0)
-    
-    logger.info(f"🖥️ Hardware Detected: {device_name} ({vram_gb:.1f} GB)")
-
-    if vram_gb > 20.0:
+def get_strategy(profile: HardwareProfile) -> OptimizationStrategy:
+    if profile.is_high_end():
         return HighPerformanceStrategy()
-    else:
-        return SurvivalStrategy()
+    return SurvivalStrategy()
 
-# --- 4. CORE ENGINE ---
+# --- 5. CORE ENGINE ---
 class LatentMotionEngine:
-    """
-    SMA-01 Core Engine v3.1
-    Orchestrates the generative pipeline with physics-based constraints.
-    """
-    
     def __init__(self):
-        logger.info("⚙️ Initializing SMA-01 Core Engine...")
+        logger.info("⚙️ Initializing SMA-01 Core Engine v2.0...")
         
         self.config = EngineConfig()
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.dtype = torch.float16 if self.device == "cuda" else torch.float32
+        self.profile = HardwareProfile()
+        self.token = self._resolve_token()
         
-        # 1. Credential Injection
-        self.token = self._resolve_credentials()
-        
-        # 2. Load Vector Database (Prompts)
+        # Load Data
         self.prompts_db = self._load_prompts()
         
-        # 3. Strategy Selection
-        self.strategy = detect_hardware_strategy()
+        # Select Strategy
+        self.strategy = get_strategy(self.profile)
         
-        # 4. Pipeline Construction
+        # Build Pipe
         self.pipe = self._build_pipeline()
 
-    def _resolve_credentials(self) -> Optional[str]:
-        """
-        Universal Token Resolver (Docker + Colab + Local).
-        """
-        # Priority A: Env Variable (Production/Docker)
+    def _resolve_token(self) -> Optional[str]:
         token = os.getenv("HF_TOKEN")
-        if token:
-            logger.info("🔑 Token loaded from Environment.")
-            return token
-            
-        # Priority B: Colab Userdata (Sandbox)
-        try:
-            from google.colab import userdata
-            token = userdata.get('HF_TOKEN')
-            if token:
-                logger.info("🔑 Token loaded from Colab Userdata.")
-                return token
-        except ImportError:
-            pass
-
-        logger.warning("⚠️ HF_TOKEN not found. Accessing public manifold only.")
-        return None
+        if not token:
+            logger.warning("⚠️ HF_TOKEN not found. Public models only.")
+        return token
 
     def _load_prompts(self) -> Dict[str, Any]:
         if not os.path.exists(self.config.prompts_path):
-            logger.error(f"❌ Critical: Config {self.config.prompts_path} missing.")
+            logger.error(f"❌ Config {self.config.prompts_path} missing.")
             return {"scenes": {}}
-            
         with open(self.config.prompts_path, 'r') as f:
-            data = json.load(f)
-        logger.info("Correction Vectors (Prompts) loaded.")
-        return data
+            return json.load(f)
 
     def _build_pipeline(self) -> AnimateDiffPipeline:
-        logger.info("🔌 Mounting Neural Adapters...")
+        dtype = torch.float16 if self.profile.device == "cuda" else torch.float32
         
+        logger.info("🔌 Mounting Neural Adapters...")
         adapter = MotionAdapter.from_pretrained(
             self.config.motion_adapter_id,
-            torch_dtype=self.dtype,
+            torch_dtype=dtype,
             token=self.token
         )
 
         pipe = AnimateDiffPipeline.from_pretrained(
             self.config.base_model_id,
             motion_adapter=adapter,
-            torch_dtype=self.dtype,
+            torch_dtype=dtype,
             token=self.token
         )
 
-        # Physics Scheduler (Euler Ancestral implies conservation of momentum in sampling)
         pipe.scheduler = EulerDiscreteScheduler.from_config(
             pipe.scheduler.config, 
             timestep_spacing="trailing", 
             beta_schedule="linear"
         )
 
-        self.strategy.apply(pipe)
+        # Apply Hardware Strategy
+        self.strategy.apply(pipe, self.profile)
+        
         return pipe
 
-    def calculate_compute_cost(self, base_steps: int, motion_scale: float) -> int:
-        """
-        Calculates required inference steps based on motion complexity.
-        Higher motion = higher entropy = more steps needed for convergence.
-        """
-        if motion_scale > 1.0:
-            return int(base_steps * 1.2) # +20% compute for high motion
-        return base_steps
+    def _enforce_limits(self, width: int, height: int) -> Tuple[int, int]:
+        """Dynamic Resolution Scaling based on Hardware Constraints."""
+        limits = self.strategy.get_resolution_constraints()
+        
+        new_w = min(width, limits["max_width"])
+        new_h = min(height, limits["max_height"])
+        
+        if new_w != width or new_h != height:
+            logger.warning(f"⚠️ Resolution Override: {width}x{height} -> {new_w}x{new_h} (VRAM Constraint)")
+        
+        return new_w, new_h
 
-    def render(self, scene_name: str, forced_seed: int = -1) -> str:
-        """
-        Executes the generative trajectory.
-        """
-        # A. Validation
+    def render(self, scene_name: str, forced_seed: int = -1):
         if scene_name not in self.prompts_db.get('scenes', {}):
-            raise ValueError(f"❌ Scene '{scene_name}' undefined in Latent Space.")
-            
+            return
+
         scene_data = self.prompts_db['scenes'][scene_name]
         sys_config = self.prompts_db.get('system_settings', {})
 
-        # B. Parameter Extraction
-        width = sys_config.get('width', 512)
-        height = sys_config.get('height', 512)
-        fps = sys_config.get('fps', 8)
+        # 1. Resolution Safety
+        width, height = self._enforce_limits(
+            sys_config.get('width', 512), 
+            sys_config.get('height', 512)
+        )
+        
+        # 2. Physics & Compute
+        motion_scale = scene_data.get('motion_scale', 1.0)
         base_steps = sys_config.get('base_steps', 25)
         
-        # C. Latent Physics Injection (Motion Scale)
-        motion_scale = scene_data.get('motion_scale', 1.0)
-        inference_steps = self.calculate_compute_cost(base_steps, motion_scale)
-
-        # D. Seed Integrity
-        # JSON seed overrides random, forced_seed overrides JSON.
+        # 3. Seed Integrity (CPU Generator for Cross-Platform Consistency)
         json_seed = scene_data.get('seed', -1)
-        
-        if forced_seed != -1:
-            seed = forced_seed
-        elif json_seed != -1:
-            seed = json_seed
-        else:
-            seed = random.randint(0, 2**32 - 1)
-
-        logger.info(f"🎲 Seed Locked: {seed}")
-        
-        # <<< CRITICAL FIX: Generator must be on CPU for cross-platform reproducibility >>>
-        # Was: generator = torch.Generator(self.device).manual_seed(seed)
+        seed = forced_seed if forced_seed != -1 else (json_seed if json_seed != -1 else random.randint(0, 2**32-1))
         generator = torch.Generator("cpu").manual_seed(seed)
 
-        # E. Execution
-        logger.info(f"🎬 Action: {scene_name}")
-        logger.info(f"   Context: {scene_data.get('description')}")
-        logger.info(f"   Physics: Motion Scale {motion_scale} -> Steps {inference_steps}")
+        logger.info(f"🎬 Action: {scene_name} | Seed: {seed} | Motion: {motion_scale}")
 
+        # 4. Execution
         output = self.pipe(
             prompt=scene_data['positive'],
             negative_prompt=scene_data.get('negative', self.config.default_negative),
             num_frames=16,
             guidance_scale=7.5,
-            num_inference_steps=inference_steps,
+            num_inference_steps=base_steps,
             generator=generator,
             width=width,
             height=height,
         )
-        
-        # F. Artifact Storage
+
+        # 5. Export
         os.makedirs(self.config.output_dir, exist_ok=True)
         filename = f"{self.config.output_dir}/{scene_name}_{seed}.gif"
         export_to_gif(output.frames[0], filename)
-        
-        logger.info(f"💾 Artifact materialized: {filename}")
-        return filename
+        logger.info(f"💾 Artifact: {filename}")
 
-# --- 5. ENTRY POINT ---
+# --- 6. ENTRY POINT ---
 if __name__ == "__main__":
-    print("--- SMA-01 CORE INITIALIZED ---")
     try:
         engine = LatentMotionEngine()
+        scenes = engine.prompts_db.get('scenes', {})
         
-        # Example: Render all scenes defined in JSON
-        for scene_key in engine.prompts_db['scenes'].keys():
+        if not scenes:
+            logger.warning("No scenes found in prompts.json")
+        
+        for scene_key in scenes.keys():
             engine.render(scene_key)
             
-        print("✅ Batch Processing Complete.")
+        print("\n✅ Batch Processing Complete.")
     except Exception as e:
         logger.critical(f"❌ System Failure: {e}")
         raise
