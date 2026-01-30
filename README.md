@@ -1,63 +1,48 @@
-# JEPA-Synthetic-Lab: Conceptual Visualization of Joint Embedding Architectures
+# ⚡ Adaptive-Motion-Lab
 
-**An experimental pipeline for visualizing the transition from stochastic hallucination to structural prediction using Latent Diffusion Models.**
+**High-Performance AnimateDiff Pipeline with Hardware-Aware Optimization.**
 
----
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0%2B-red.svg)](https://pytorch.org/)
+[![Diffusers](https://img.shields.io/badge/HuggingFace-Diffusers-yellow.svg)](https://huggingface.co/docs/diffusers/index)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-## ⚠️ Scientific Disclaimer
+## 📖 Overview
 
-**This project is a visual research tool, not an implementation of the I-JEPA or V-JEPA architectures proposed by LeCun et al.**
+**Adaptive-Motion-Lab** is a production-ready wrapper around the [AnimateDiff](https://github.com/guoyww/AnimateDiff) architecture. It is designed to solve the "configuration hell" of running Latent Diffusion Models across heterogeneous hardware environments (from Google Colab T4 to NVIDIA H100).
 
-* **Actual JEPA:** Learns abstract representations by predicting missing information in embedding space without reconstruction.
-* **This Lab:** Uses Pixel/Latent reconstruction (Autoencoding) and Temporal Attention to *visualize* the concept of stability.
+Instead of hardcoding settings, this engine uses a **Strategy Pattern** to detect available VRAM and Compute Capability, dynamically injecting the optimal attention mechanisms (SDPA vs xFormers) and VRAM management policies.
 
-The code is intended for educational demonstrations of AI safety concepts and architectural topology visualizations.
+## 🚀 Key Features
 
+### 1. Hardware-Aware Dispatch (HAL)
+The engine automatically profiles the GPU at runtime:
+* **Ampere+ (A100, A6000, 3090/4090):** Unlocks `HighPerformanceStrategy`. Uses native PyTorch 2.0 SDPA (`F.scaled_dot_product_attention`) for maximum throughput. Disables aggressive offloading to keep latencies low.
+* **Legacy/Consumer (T4, V100, <16GB VRAM):** Activates `SurvivalStrategy`. Enforces `xformers` memory-efficient attention, enables model CPU offload, and applies VAE Slicing/Tiling to prevent OOM (Out-of-Memory) errors.
 
+### 2. Deterministic & Reproducible
+* Cross-platform seeding via CPU-based `torch.Generator`.
+* Strict prompt management via JSON configuration.
 
----
+### 3. Modular CLI Architecture
+* **Strategy Pattern:** Clean separation of concerns (`HardwareProfile` -> `OptimizationStrategy`).
+* **CLI Support:** Run different experiments using the `--prompts` argument without changing the source code.
 
-## 🔬 Abstract
+## 🛠 Engineering Stack
 
-This repository contains the implementation of **SMA-01 Core Engine**, a synthetic laboratory designed to simulate the *phenomenology* of Joint Embedding Predictive Architectures (JEPA). 
+| **Domain** | **Stack & Instrumentation** |
+| :--- | :--- |
+| **Deep Learning** | ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white) ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white) ![Diffusers](https://img.shields.io/badge/🤗_Diffusers-v0.25+-FFD21E?logo=huggingface&logoColor=black) ![xFormers](https://img.shields.io/badge/Meta-xFormers-blue) |
+| **Generative R&D** | ![AnimateDiff](https://img.shields.io/badge/Model-AnimateDiff-orange) ![ControlNet](https://img.shields.io/badge/CV-ControlNet-4682B4) ![Stable Diffusion](https://img.shields.io/badge/SD-v1.5%2FXL-4B0082) ![Optimization](https://img.shields.io/badge/Task-Inference_Opt-green) |
+| **Infrastructure** | ![Linux](https://img.shields.io/badge/Linux-Bash-FCC624?logo=linux&logoColor=black) ![Docker](https://img.shields.io/badge/Docker-Container-2496ED?logo=docker&logoColor=white) ![CUDA](https://img.shields.io/badge/NVIDIA-CUDA_Profiling-76B900?logo=nvidia&logoColor=white) ![Colab](https://img.shields.io/badge/Google-Colab_Pro-F9AB00?logo=googlecolab&logoColor=white) |
+| **Architecture** | ![OOP](https://img.shields.io/badge/Pattern-OOP-lightgrey) ![SOLID](https://img.shields.io/badge/Principle-SOLID-lightgrey) ![Strategy](https://img.shields.io/badge/Design-Strategy_Pattern-9cf) ![Clean Arch](https://img.shields.io/badge/Arch-Clean_Code-success) |
 
-Unlike traditional JEPA implementations (which learn semantic representations via energy minimization), this project utilizes **Generative Diffusion Models (AnimateDiff + Stable Diffusion)** to visualize the theoretical shift from High-Entropy States (LLM Hallucinations) to Low-Entropy Predictive States (World Model Stability).
+## 📦 Installation
 
-The pipeline maps the concept of "Prediction in Latent Space" to "Temporal Consistency in Diffusion Motion Modules".
-
-## 📐 Mathematical & Architectural Basis
-
-The simulation rests on the correlation between **Temporal Attention** in Video Diffusion and **Predictive Stability** in World Models.
-
-### 1. The Visualization Proxy
-We model the transition using the standard Latent Diffusion process, where the reverse process $p_\theta(x_{0:T})$ is guided to simulate structural emergence:
-
-$$x_{t-1} = \frac{1}{\sqrt{\alpha_t}} \left( x_t - \frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}} \epsilon_\theta(x_t, t) \right) + \sigma_t z$$
-
-* **State $\mathcal{H}$ (Hallucination):** Modeled via high classifier-free guidance scale and low temporal smoothing, resulting in stochastic variance between frames.
-* **State $\mathcal{S}$ (Structure/JEPA):** Modeled via `AnimateDiff` Motion Modules (Temporal Transformers), where the attention mechanism enforces temporal coherence $C_t$:
-
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
-
-Here, increasing the `motion_scale` parameter effectively restricts the latent trajectory variance, serving as a visual metaphor for the energy-based prediction constraints in JEPA.
-
-## 🛠 Core Features
-
-* **SMA-01 Engine:** A modified diffusion pipeline optimizing `EulerDiscreteScheduler` for rapid latent space traversal.
-* **Adaptive Compute:** Heuristic resource allocation (A100/H100 vs Consumer GPU) for VRAM management (compatible with Google Colab Pro).
-* **Deterministic Sampling:** Strict seeding mechanism for `torch.Generator` to ensure reproducibility of latent noise patterns.
-* **Dynamic Motion Control:** Programmatic adjustment of Motion Module weights to simulate the "focusing" of a predictive model.
-
-## 🚀 Installation & Usage
-
-### Prerequisites
-* Python 3.10+
-* CUDA 11.8+
-* PyTorch 2.0+ (with `xformers` recommended for efficiency)
-* Google Colab Pro (Recommended for High-VRAM generation)
-
-### Setup
 ```bash
-git clone [https://github.com/BorisKlimchenko/JEPA-Synthetic-Lab.git](https://github.com/BorisKlimchenko/JEPA-Synthetic-Lab.git)
-cd JEPA-Synthetic-Lab
+# Clone the repository
+git clone [https://github.com/BorisKlimchenko/Adaptive-Motion-Lab.git](https://github.com/BorisKlimchenko/Adaptive-Motion-Lab.git)
+cd Adaptive-Motion-Lab
+
+# Install dependencies
 pip install -r requirements.txt

@@ -1,21 +1,25 @@
-# --- Core Deep Learning ---
-# Базовая библиотека для тензоров и работы с GPU
-torch>=2.1.0 --extra-index-url https://download.pytorch.org/whl/cu121
+# --- Core Infrastructure (CUDA 12.1) ---
+# Указываем индекс для правильной версии PyTorch с поддержкой GPU
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
 
-# --- Generative Models ---
-# Основная библиотека для AnimateDiff и Stable Diffusion
+# --- Generative Stack ---
+# Основной движок: AnimateDiff + Stable Diffusion
 diffusers>=0.26.0
-
-# Необходима для работы текстовых энкодеров (CLIP) внутри пайплайна
+# Текстовые энкодеры (CLIP)
 transformers>=4.38.0
 
-# --- Optimization & Loading ---
-# Критически важна для SurvivalStrategy (enable_model_cpu_offload)
+# --- Optimization & Memory Management ---
+# Критически важно для CPU Offload (Survival Strategy)
 accelerate>=0.27.0
-
-# Для быстрой и безопасной загрузки весов моделей (.safetensors)
+# Безопасная и быстрая загрузка весов
 safetensors>=0.4.2
 
-# --- Utilities ---
-# Для работы с изображениями и видео (используется внутри export_to_gif)
+# --- Performance Kernels ---
+# xFormers нужен для экономии VRAM на T4 (Colab).
+# Устанавливается ТОЛЬКО на Linux, чтобы не ломать локальную установку на Windows.
+xformers>=0.0.24; sys_platform == 'linux'
+
+# --- Media Processing ---
+# Обработка кадров и экспорт в GIF
 pillow>=10.0.0

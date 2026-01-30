@@ -1,34 +1,21 @@
-# --- 1. System & Logs ---
+# --- Python generated files ---
 __pycache__/
-*.log
-.DS_Store
-.ipynb_checkpoints/
-.vscode/
+*.pyc
+*.pyo
+*.pyd
 
-# --- 2. Virtual Environments ---
-venv/
+# --- Environments ---
+.env
+.venv
 env/
-.env
+venv/
 
-# --- 3. HEAVY MEDIA (Самое важное!) ---
-# Мы не грузим видео и аудио на GitHub. Они живут на Google Drive.
-*.mp4
-*.avi
-*.mov
-*.mp3
-*.wav
+# --- Outputs & Renders (Результаты генерации) ---
+renders/
+output/
 *.gif
-renders/   # <--- ИСПРАВИЛ ЗДЕСЬ (теперь папка в корне)
+*.mp4
 
-# --- 4. Models & Weights ---
-# Веса весят гигабайты. Не грузить!
-*.safetensors
-*.ckpt
-*.pt
-*.bin
-models/
-
-# --- 5. Secrets ---
-# Никогда не грузи ключи!
-.env
-api_keys.txt
+# --- IDE settings ---
+.vscode/
+.idea/
