@@ -9,17 +9,16 @@
 
 ## 📖 Overview
 
-**Adaptive-Motion-Lab** is a production-ready wrapper around the [AnimateDiff](https://github.com/guoyww/AnimateDiff) architecture. It is designed to solve the "configuration hell" of running Latent Diffusion Models across heterogeneous hardware environments (from Google Colab T4 to NVIDIA H100).
+**Adaptive-Motion-Lab** is a production-engineered wrapper for the [AnimateDiff](https://github.com/guoyww/AnimateDiff) architecture, specifically designed to mitigate "configuration fatigue" when deploying Latent Diffusion Models across heterogeneous hardware environments—ranging from entry-level T4 instances to high-end NVIDIA H100 clusters.
 
-Instead of hardcoding settings, this engine uses a **Strategy Pattern** to detect available VRAM and Compute Capability, dynamically injecting the optimal attention mechanisms (SDPA vs xFormers) and VRAM management policies.
+At its core, the engine utilizes a **Strategy Design Pattern** to perform runtime hardware detection. It dynamically orchestrates VRAM allocation policies and injects optimized attention mechanisms (such as **PyTorch SDPA** or **xFormers**) based on the detected Compute Capability and available memory overhead.
 
 ## 🏗️ Architecture
 
-The engine implements a **Hardware Abstraction Layer (HAL)** that selects the execution strategy at runtime.
+The engine implements a **Hardware Abstraction Layer (HAL)** that dynamically selects the execution strategy at runtime.
 
 ```mermaid
 classDiagram
-    %% Core Engine Components
     class AdaptiveInferenceEngine {
         +run(scene_name)
         -_load_prompts()
@@ -33,7 +32,6 @@ classDiagram
         +is_high_performance_node() bool
     }
 
-    %% Strategy Pattern
     class InferenceStrategy {
         <<Interface>>
         +configure_pipeline()
@@ -52,13 +50,64 @@ classDiagram
         +Max Resolution: 512x512
     }
 
-    %% Relationships
     AdaptiveInferenceEngine *-- HardwareProfile : Composition
     AdaptiveInferenceEngine o-- InferenceStrategy : Aggregation
     HardwareProfile --> InferenceStrategy : Determines Factory Output
     InferenceStrategy <|-- HighPerformanceStrategy : Implements
     InferenceStrategy <|-- ConsumerStrategy : Implements
-🎬 GalleryDemonstration of Adaptive Inference across different complexity levels (Acts):Act 1: Chaos InitializationAct 2: JEPA Flow StateT4 Optimized (Survival Strategy)A100 Optimized (HighPerf Strategy)<details><summary>👁️ <b>Expand Structural Analysis (Act 3)</b></summary>Act 3: Structural Emergence & Stabilization</details>🚀 Key Features1. Hardware-Aware Dispatch (HAL)The engine automatically profiles the GPU at runtime:Ampere+ (A100, A6000, 3090/4090): Unlocks HighPerformanceStrategy. Uses native PyTorch 2.0 SDPA (F.scaled_dot_product_attention) for maximum throughput. Disables aggressive offloading to keep latencies low.Legacy/Consumer (T4, V100, <16GB VRAM): Activates SurvivalStrategy. Enforces xformers memory-efficient attention, enables model CPU offload, and applies VAE Slicing/Tiling to prevent OOM (Out-of-Memory) errors.2. Deterministic & ReproducibleCross-platform seeding via CPU-based torch.Generator.Strict prompt management via JSON configuration.3. Modular CLI ArchitectureStrategy Pattern: Clean separation of concerns (HardwareProfile -> OptimizationStrategy).CLI Support: Run different experiments using the --prompts argument without changing the source code.🛠 Engineering StackDomainStack & InstrumentationDeep LearningGenerative R&DInfrastructureArchitecture📦 Installation & Usage1. Cloud Execution (Google Colab)For users without high-end local GPUs, use the provided launcher:Open notebooks/Colab_Launcher.ipynb in GitHub.Click the "Open in Colab" button (if available) or download the notebook to Drive.2. Local DevelopmentBash# Clone the repository
+```    
+
+## 🎬 Gallery
+
+Demonstration of **Adaptive Inference** pipeline stages running on **NVIDIA T4** (Survival Mode):
+
+* **Act 1: Latent Initialization** — Seeding the latent space and hardware profiling.
+* **Act 2: Adaptive Motion Synthesis** — Generating temporal dynamics using memory-efficient attention (xFormers).
+* **Act 3: Temporal Consistency** — Final stabilization and artifact refinement.
+
+| Act 1: Noise Initialization | Act 2: Motion Synthesis |
+| :---: | :---: |
+| ![Chaos Mode](assets/Act_1_Chaos_42.gif) | ![Flow Mode](assets/Act_2_JEPA_Flow_108.gif) |
+| *Running on T4 (Survival Strategy)* | *Running on T4 (Survival Strategy)* |
+
+<details>
+<summary>👁️ <b>View Act 3: Final Stabilization</b></summary>
+<br>
+
+![Structure Mode](assets/Act_3_Structure_777.gif)
+*Result of full optimization pipeline on T4*
+</details>
+
+### Hardware Strategy Comparison
+
+The engine automatically selects the best strategy based on your GPU:
+
+| Strategy | Target Hardware | Optimization Features |
+| :--- | :--- | :--- |
+| **Survival Strategy** (Active in Demo) | NVIDIA T4 / Consumer GPUs | xFormers, CPU Offload, VAE Slicing |
+| **High-Perf Strategy** | NVIDIA A100 / H100 / 4090 | Native SDPA (FlashAttention), Max Throughput |
+
+## 🚀 Key Features
+
+### 1. Hardware-Aware Dispatch (HAL)
+The engine automatically profiles the GPU at runtime:
+* **Ampere+ (A100, 3090+):** Unlocks `HighPerformanceStrategy` (Native PyTorch 2.0 SDPA).
+* **Legacy/Consumer (T4, V100):** Activates `SurvivalStrategy` (xFormers + CPU Offload).
+
+### 2. Deterministic & Reproducible
+* Cross-platform seeding via CPU-based `torch.Generator`.
+* Strict prompt management via JSON configuration.
+
+## 📦 Installation & Usage
+
+### 1. Cloud Execution (Google Colab)
+For users without high-end local GPUs, use the provided launcher:
+1. Open `notebooks/Colab_Launcher.ipynb` in GitHub.
+2. Click the **"Open in Colab"** button or download the notebook to Drive.
+
+### 2. Local Development
+```bash
+# Clone the repository
 git clone [https://github.com/BorisKlimchenko/Adaptive-Motion-Lab.git](https://github.com/BorisKlimchenko/Adaptive-Motion-Lab.git)
 cd Adaptive-Motion-Lab
 
